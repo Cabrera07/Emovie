@@ -79,6 +79,12 @@ Para instalar y ejecutar el proyecto eMovie, sigue estos pasos:
     pip install -r requirements.txt
     ```
 
+## Datos
+
+Debido al tamaño de los archivos **`rating.csv`** y **`movie.csv`**, no se incluyen directamente en el repositorio. Puedes descargar los archivos desde los siguientes enlaces y colocarlos en la carpeta **`Data/Raw/`**:
+
+[Descargar Archivos](https://www.kaggle.com/datasets/grouplens/movielens-20m-dataset?resource=download&select=rating.csv)
+
 ## Uso
 
 1. Procesamiento de datos:
