@@ -1,7 +1,8 @@
 import pandas as pd
 import streamlit as st
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.neighbors import NearestNeighbors
+import tensorflow as tf
+import joblib
+import os
 
 # Cargar el archivo CSV
 df = pd.read_csv("Data/Processed/processed_movies.csv")
@@ -14,13 +15,17 @@ df["info"] = (
     "Average Rating: " + df["average_rating"].astype(str) + " | Genres: " + df["genres"]
 )
 
+# Cargar el modelo entrenado y el MultiLabelBinarizer
+model_path = os.path.join('Models', 'movie_recommender_model_4.keras')
+mlb_path = os.path.join('Models', 'mlb.joblib')
+model = tf.keras.models.load_model(model_path)
+mlb = joblib.load(mlb_path)
 
 # Función para convertir rating en estrellas
 def rating_to_stars(rating):
     full_star = "★"
     empty_star = "☆"
     return full_star * int(rating) + empty_star * (5 - int(rating))
-
 
 # Emociones disponibles con emojis
 emotion_options = {
@@ -31,23 +36,17 @@ emotion_options = {
     "Anger 😠": "Anger",
 }
 
-# Crear una representación TF-IDF de las emociones
-vectorizer = TfidfVectorizer()
-tfidf_matrix = vectorizer.fit_transform(df["emotions"])
-
-# Entrenar el modelo de Nearest Neighbors
-model = NearestNeighbors(metric="cosine", algorithm="brute")
-model.fit(tfidf_matrix)
-
-
-# Función para recomendar películas
-def recommend_movies(selected_emotions):
-    query = " ".join(selected_emotions)
-    query_vec = vectorizer.transform([query])
-    distances, indices = model.kneighbors(query_vec, n_neighbors=10)
-    recommended_movies = df.iloc[indices[0]][["title", "info", "average_rating"]]
-    return recommended_movies
-
+# Función para recomendar películas basadas en el modelo entrenado
+def recommend_movies_embedding(emotion1, emotion2, movies, mlb, model, top_n=10):
+    emotions = [emotion1, emotion2]
+    binarized_emotions = mlb.transform([emotions])
+    predicted_rating = model.predict(binarized_emotions)[0][0]
+    
+    movies['rating_diff'] = abs(movies['average_rating'] - predicted_rating)
+    
+    recommended_movies = movies.sort_values(by=['rating_diff', 'average_rating'], ascending=[True, False]).head(top_n)
+    
+    return recommended_movies[['title', 'info', 'average_rating']]
 
 # Incluir CSS para cambiar el tamaño del multiselect, agregar un logo y estilizar los enlaces
 st.markdown(
@@ -117,45 +116,53 @@ st.markdown(
 )
 
 # Título de la aplicación
-st.title("Movie Recommendation Based on Your Emotions")
+st.title("Movie Recommendation Based On Emotions")
 
 # Sección: ¿Cómo te sientes hoy?
-st.header("How do you feel today?")
+st.header("How do you want to feel today?")
 
 selected_emotions = st.multiselect(
-    "Select your emotions:", list(emotion_options.keys()), max_selections=2
+    "Select your emotions:", list(emotion_options.keys())
 )
 
-# Mostrar las recomendaciones de películas
-if st.button("Search Movies"):
-    if selected_emotions:
-        selected_emotions_values = [
-            emotion_options[emotion] for emotion in selected_emotions
-        ]
-        # Obtener recomendaciones de películas
-        recommended_movies = recommend_movies(selected_emotions_values)
+# Verificar la cantidad de emociones seleccionadas
+if len(selected_emotions) > 2:
+    st.error("Please select a maximum of 2 emotions.")
+else:
+    # Mostrar las recomendaciones de películas
+    if st.button("Search Movies"):
+        if len(selected_emotions) == 1 or len(selected_emotions) == 2:
+            selected_emotions_values = [
+                emotion_options[emotion] for emotion in selected_emotions
+            ]
+            # Para manejar un solo emoción, duplicamos el valor para la predicción
+            if len(selected_emotions_values) == 1:
+                selected_emotions_values.append(selected_emotions_values[0])
+            
+            # Obtener recomendaciones de películas utilizando el modelo entrenado
+            recommended_movies = recommend_movies_embedding(selected_emotions_values[0], selected_emotions_values[1], df, mlb, model)
 
-        # Mostrar los resultados
-        if not recommended_movies.empty:
-            st.header("Recommended Movies:")
-            for index, row in recommended_movies.iterrows():
-                title = row["title"]
-                info = row["info"]
-                rating = row["average_rating"]
-                stars = rating_to_stars(rating)
-                search_url = f"https://www.google.com/search?q={title}"
-                st.markdown(
-                    f"""
-                    <div class="tooltip">
-                        <a class="movie-link" href="{search_url}" target="_blank">
-                            {title} <span class="stars">{stars}</span>
-                        </a>
-                        <span class="tooltiptext">{info}</span>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            # Mostrar los resultados
+            if not recommended_movies.empty:
+                st.header("Recommended Movies:")
+                for index, row in recommended_movies.iterrows():
+                    title = row["title"]
+                    info = row["info"]
+                    rating = row["average_rating"]
+                    stars = rating_to_stars(rating)
+                    search_url = f"https://www.google.com/search?q={title}"
+                    st.markdown(
+                        f"""
+                        <div class="tooltip">
+                            <a class="movie-link" href="{search_url}" target="_blank">
+                                {title} <span class="stars">{stars}</span>
+                            </a>
+                            <span class="tooltiptext">{info}</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+            else:
+                st.write("No movies found for the selected emotions.")
         else:
-            st.write("No movies found for the selected emotions.")
-    else:
-        st.write("Please select at least one emotion.")
+            st.write("Please select at least one emotion.")
