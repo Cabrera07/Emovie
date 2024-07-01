@@ -37,7 +37,6 @@ Emovie/
 │
 ├── Notebooks/
 │   ├── data_preprocessing.ipynb
-│   ├── library.ipynb
 │   ├── model_training_1.ipynb
 │   ├── model_training_2.ipynb
 │   ├── model_training_3.ipynb
